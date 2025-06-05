@@ -128,24 +128,46 @@ def empty_spam(service):
     except HttpError as error:
         print(f"API Error: {error}")
 
-def delete_by_filter(service):
-    """Delete emails matching a custom Gmail search query."""
-    filter_query = input("Enter your custom Gmail search query: ").strip()
+def delete_by_filter(service, filter_query=None):
+    """Delete emails matching a custom Gmail search query (with pagination)."""
+    if not filter_query:
+        filter_query = input("Enter your custom Gmail search query: ").strip()
     if not filter_query:
         print("No query entered.")
         return
     try:
-        response = service.users().messages().list(userId='me', q=filter_query, maxResults=BATCH_SIZE).execute()
-        messages = response.get('messages', [])
-        if not messages:
-            print("No emails found for this filter.")
-            return
-        print(f"{len(messages)} emails found. Deleting...")
-        for msg in messages:
-            service.users().messages().trash(userId='me', id=msg['id']).execute()
-        print("All filtered emails have been moved to trash.")
+        next_page_token = None
+        total_deleted = 0
+        while True:
+            # API call with pagination
+            response = service.users().messages().list(
+                userId='me',
+                q=filter_query,
+                maxResults=BATCH_SIZE,
+                pageToken=next_page_token
+            ).execute()
+            
+            messages = response.get('messages', [])
+            if not messages:
+                print("No more emails found.")
+                break
+            
+            # Delete current batch
+            print(f"Deleting {len(messages)} emails...")
+            for msg in messages:
+                service.users().messages().trash(userId='me', id=msg['id']).execute()
+                total_deleted += 1
+            
+            # Check for next page
+            next_page_token = response.get('nextPageToken')
+            if not next_page_token:
+                break
+        
+        print(f"Total {total_deleted} emails moved to trash.")
+    
     except HttpError as error:
         print(f"API Error: {error}")
+
 
 def main_menu(service):
     """Display the main menu and handle user input."""
